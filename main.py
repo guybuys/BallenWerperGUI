@@ -1,9 +1,13 @@
 import pygame
-from graphic_interface import Slider, PushButtonPic, TextField, TerminalWindow, Label, SerialPlotter
+from graphic_interface import Slider, PushButtonPic, TextField, TerminalWindow, Label, Scope
 from serial_manager import SerialManager
 from parameter_manager import ParameterManager
-from colors import BLACK, RED, GRAY, BACKGROUNDCOLOR, DARKGREEN, SCREENGREEN
+from colors import BLACK, RED, YELLOW, BLUE, CYAN, MAGENTA, GRAY, BACKGROUNDCOLOR, DARKGREEN, SCREENGREEN
 import os
+
+TARGET1 = 24 # 50
+TARGET2 = 30 # 60
+TARGET3 = 35 # 70
 
 # Get the current directory of the Python file
 current_dir = os.path.dirname(__file__)
@@ -83,11 +87,13 @@ def main():
 
     clock = pygame.time.Clock()
     running = True
+    scope = False
 
     # callback functions
     def button_callback(state):
         if state:
             value = 1
+            switch_scope_run.set_state(True)
         else:
             value = 0
         terminal_tx_window.add_message("motor " + str(value), color=DARKGREEN)
@@ -101,6 +107,12 @@ def main():
         terminal_tx_window.add_message("pid " + str(value), color=DARKGREEN)
         parameter_manager.set_parameter("pid", value)
 
+    def button_fast_callback(state):
+        if state:
+            my_scope.set_time_scale(-1)
+        else:
+            my_scope.set_time_scale(0)
+
     def kp_callback(value):
         terminal_tx_window.add_message("kp " + str(value), color=DARKGREEN)
         parameter_manager.set_parameter("kp", value)
@@ -113,19 +125,64 @@ def main():
         terminal_tx_window.add_message("kd " + str(value), color=DARKGREEN)
         parameter_manager.set_parameter("kd", value)
 
+    def button_target1_callback(state):
+        switch_target2.set_state(False)
+        switch_target3.set_state(False)
+        if state:
+            slider_target.update_value(TARGET1)
+            slider_target.update_slider_position()
+        check_target()
+
+    def button_target2_callback(state):
+        switch_target1.set_state(False)
+        switch_target3.set_state(False)
+        if state:
+            slider_target.update_value(TARGET2)
+            slider_target.update_slider_position()
+        check_target()
+
+    def button_target3_callback(state):
+        switch_target1.set_state(False)
+        switch_target2.set_state(False)
+        if state:
+            slider_target.update_value(TARGET3)
+            slider_target.update_slider_position()
+        check_target()
+
+    def check_target():
+        if switch_target1.get_state() is True or switch_target2.get_state() is True or switch_target3.get_state() is True:
+            value = 1
+        else:
+            value = 0
+        switch_pid.set_state(value)
+
+        terminal_tx_window.add_message("pid " + str(value), color=DARKGREEN)
+        parameter_manager.set_parameter("pid", value)
+
     # Create UI elements
     switch_on = PushButtonPic(50, 25, on_image_path, off_image_path, "motor", callback=button_callback)
 
     switch_pid = PushButtonPic(150, 25, on_image_path, off_image_path, "PID", callback=pid_callback)
 
+    switch_scope_run = PushButtonPic(1200, 800, on_image_path, off_image_path, "Scope")
+
+    switch_scope_speed = PushButtonPic(1300, 800, on_image_path, off_image_path, "Time x2",
+                                       callback=button_fast_callback)
+
+    switch_target1 = PushButtonPic(50, 475, on_image_path, off_image_path, "Target1", font_color=MAGENTA,
+                                   callback=button_target1_callback)
+    switch_target2 = PushButtonPic(150, 475, on_image_path, off_image_path, "Target2", font_color=CYAN,
+                                   callback=button_target2_callback)
+    switch_target3 = PushButtonPic(250, 475, on_image_path, off_image_path, "Target3", font_color=YELLOW,
+                                   callback=button_target3_callback)
     slider_pwm1 = Slider(50, 175, 1024, 30, 0, 1023, 100,
                          slot_color=BLACK, slider_color=GRAY)
     slider_pwm2 = Slider(50, 275, 1024, 30, 0, 1023, 100,
                          slot_color=BLACK, slider_color=GRAY)
     slider_target = Slider(50, 375, 1024, 30, 0, 255, 100,
                            slot_color=BLACK, slider_color=(200, 200, 200))
-    slider_angle = Slider(50, 475, 1024, 30, 0, 180, 90,
-                          slot_color=BLACK, slider_color=(200, 200, 200))
+    # slider_angle = Slider(50, 475, 1024, 30, -2, 2, 0,
+    #                      slot_color=BLACK, slider_color=(200, 200, 200))
 
     label_pwm1 = Label(60, 120, 'PWM1', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
     label_pwm2 = Label(60, 220, 'PWM2', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
@@ -135,7 +192,7 @@ def main():
     label_kp = Label(840, 8, 'KP', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
     label_ki = Label(840, 58, 'KI', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
     label_kd = Label(840, 108, 'KD', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
-    label_angle = Label(50, 420, 'Angle', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
+    label_angle = Label(50, 420, 'Time Scale', font=sharpie_font_path, font_size=28, color=(0, 0, 0))
 
     text_field_pwm1 = TextField(200, 125, 100, 40, rect_color=BLACK, background_color=BLACK,
                                 passive_text_color=RED, font=led_font_path, font_size=40)
@@ -147,8 +204,10 @@ def main():
                                 passive_text_color=RED, font=led_font_path, font_size=40)
     text_field_rps2 = TextField(600, 40, 120, 45, rect_color=BLACK, background_color=BLACK,
                                 passive_text_color=RED, font=led_font_path, font_size=40)
-    text_field_angle = TextField(200, 425, 100, 45, rect_color=BLACK, background_color=BLACK,
-                                 passive_text_color=RED, font=led_font_path, font_size=40)
+    motor_rps1 = 0
+    motor_rps2 = 0
+    # text_field_angle = TextField(200, 425, 100, 45, rect_color=BLACK, background_color=BLACK,
+    #                             passive_text_color=RED, font=led_font_path, font_size=40)
 
     text_field_lcd = TextField(910, 8, 160, 151, rect_color=BLACK, font=lcd_font_path, font_size=30)
     text_field_kp = TextField(930, 10, 100, 45, rect_color=(100, 200, 0), font=lcd_font_path,
@@ -158,8 +217,14 @@ def main():
     text_field_kd = TextField(930, 110, 100, 45, rect_color=(100, 200, 0), font=lcd_font_path,
                               font_size=30, editable=True, callback=kd_callback)
 
-    terminal_tx_window = TerminalWindow(50, 520, 500, 270, background_color=SCREENGREEN)
-    terminal_rx_window = TerminalWindow(575, 520, 500, 270, background_color=SCREENGREEN)
+    terminal_tx_window = TerminalWindow(50, 620, 500, 270, background_color=SCREENGREEN)
+    terminal_rx_window = TerminalWindow(575, 620, 500, 270, background_color=SCREENGREEN)
+
+    my_scope = Scope(1125, 100, 750, 600, dev_per_quad_x=5, dev_per_quad_y=4)
+    my_scope.add_signal(offset=0, val_per_division=256 )
+    my_scope.add_signal(offset=0, val_per_division=25, color=YELLOW)
+    my_scope.add_signal(offset=-4, val_per_division=256, color=BLUE)
+    my_scope.add_signal(offset=-4, val_per_division=25, color=MAGENTA)
 
     # Get values from device with parameter manager
     switch_on.set_state(get_param_value("motor", parameter_manager, terminal_tx_window, terminal_rx_window))
@@ -173,8 +238,8 @@ def main():
     slider_pwm2.update_slider_position()
     slider_target.update_value(get_param_value("speed", parameter_manager, terminal_tx_window, terminal_rx_window))
     slider_target.update_slider_position()
-    slider_angle.update_value(get_param_value("servo", parameter_manager, terminal_tx_window, terminal_rx_window))
-    slider_angle.update_slider_position()
+    # slider_angle.update_value(get_param_value("servo", parameter_manager, terminal_tx_window, terminal_rx_window))
+    # slider_angle.update_slider_position()
 
     # Start program
     while running:
@@ -182,12 +247,17 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             switch_on.handle_event(event)
-            switch_pid.handle_event(event)
+            # switch_pid.handle_event(event)
+            switch_scope_run.handle_event(event)
+            switch_scope_speed.handle_event(event)
+            switch_target1.handle_event(event)
+            switch_target2.handle_event(event)
+            switch_target3.handle_event(event)
             if not switch_pid.get_state():
                 slider_pwm1.handle_event(event)
                 slider_pwm2.handle_event(event)
             slider_target.handle_event(event)
-            slider_angle.handle_event(event)
+            # slider_angle.handle_event(event)
             text_field_kp.handle_event(event)
             text_field_ki.handle_event(event)
             text_field_kd.handle_event(event)
@@ -195,7 +265,7 @@ def main():
         text_field_pwm1.set_value(int(slider_pwm1.get_value()))
         text_field_pwm2.set_value(int(slider_pwm2.get_value()))
         text_field_speed.set_value(int(slider_target.get_value()))
-        text_field_angle.set_value(int(slider_angle.get_value()))
+        # text_field_angle.set_value(int(slider_angle.get_value()))
         # Update UI elements
         # serial_plotter.update()
 
@@ -204,9 +274,16 @@ def main():
         slider_pwm1.draw(screen)
         slider_pwm2.draw(screen)
         slider_target.draw(screen)
-        slider_angle.draw(screen)
+        # slider_angle.draw(screen)
         switch_on.draw(screen)
         switch_pid.draw(screen)
+        switch_scope_run.draw(screen)
+        switch_scope_speed.draw(screen)
+
+        switch_target1.draw(screen)
+        switch_target2.draw(screen)
+        switch_target3.draw(screen)
+
         label_pwm1.draw(screen)
         label_pwm2.draw(screen)
         label_target.draw(screen)
@@ -222,14 +299,19 @@ def main():
         text_field_speed.draw(screen)
         text_field_rps1.draw(screen)
         text_field_rps2.draw(screen)
-        text_field_angle.draw(screen)
+        # text_field_angle.draw(screen)
         text_field_lcd.draw(screen)
         text_field_kp.draw(screen)
         text_field_ki.draw(screen)
         text_field_kd.draw(screen)
         terminal_tx_window.draw(screen)
         terminal_rx_window.draw(screen)
-        # serial_plotter.draw(screen)
+        if switch_scope_run.get_state():
+            my_scope.add_data_to_signal(0, int(slider_pwm1.get_value()))
+            my_scope.add_data_to_signal(1, motor_rps1)
+            my_scope.add_data_to_signal(2, int(slider_pwm2.get_value()))
+            my_scope.add_data_to_signal(3, motor_rps2)
+        my_scope.draw(screen)
         pygame.display.flip()
 
         # Catch if sliders are moved (switches and textbox handled via callback functions)
@@ -246,17 +328,19 @@ def main():
             parameter_manager.set_parameter("pwm2", slider_pwm2_val_str)
             terminal_tx_window.add_message("pwm2 " + slider_pwm2_val_str, color=DARKGREEN)
 
+
         if slider_target.is_moved():
             slider_target_val_str = str(int(slider_target.get_value()))
             print("Current slider_target value: " + slider_target_val_str)
             parameter_manager.set_parameter("speed", slider_target_val_str)
             terminal_tx_window.add_message("speed " + slider_target_val_str, color=DARKGREEN)
-
+        '''
         if slider_angle.is_moved():
             slider_angle_val_str = str(int(slider_angle.get_value()))
             print("Current slider_angle value: " + slider_angle_val_str)
-            parameter_manager.set_parameter("servo", slider_angle_val_str)
-            terminal_tx_window.add_message("servo " + slider_angle_val_str, color=DARKGREEN)
+            # parameter_manager.set_parameter("servo", slider_angle_val_str)
+            # terminal_tx_window.add_message("servo " + slider_angle_val_str, color=DARKGREEN)
+        '''
 
         # Get parameters updates
         update_list = parameter_manager.check_parameter_updates()
@@ -277,6 +361,7 @@ def main():
                         else:
                             switch_pid.set_state(False)
                 elif parameter_name == "motorRps1":
+                    motor_rps1 = float(parameter_value)
                     text_field_rps1.set_value(parameter_value)
                     target = slider_target.get_value()
                     if switch_pid.get_state():
@@ -289,6 +374,7 @@ def main():
                     else:
                         text_field_rps1.change_colors(passive_text_color=RED)
                 elif parameter_name == "motorRps2":
+                    motor_rps2 = float(parameter_value)
                     text_field_rps2.set_value(parameter_value)
                     target = slider_target.get_value()
                     if switch_pid.get_state():

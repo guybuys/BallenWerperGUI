@@ -1,10 +1,12 @@
 import pygame
 from pygame.locals import *
+from colors import SCOPE_BG, BLACK, GREEN
+from collections import deque  # for ScopeSignal class
 
 
 class Slider:
-    def __init__(self, x, y, width, height, min_value, max_value, initial_value, slot_color=pygame.Color(200,200,200),
-                 slider_color=pygame.Color(100,100,100)):
+    def __init__(self, x, y, width, height, min_value, max_value, initial_value, slot_color=pygame.Color(200, 200, 200),
+                 slider_color=pygame.Color(100, 100, 100)):
         self.x = x
         self.y = y
         self.width = width
@@ -52,7 +54,7 @@ class Slider:
 
                 # Calculate new value based on slider position
                 new_value = ((self.slider_pos - self.x) / (self.width - 20)) * (
-                            self.max_value - self.min_value) + self.min_value
+                        self.max_value - self.min_value) + self.min_value
                 self.update_value(new_value)
         elif event.type == KEYDOWN and pygame.key.get_focused():
             if event.key == K_EQUALS and self.is_mouse_over():
@@ -95,7 +97,7 @@ class Slider:
 
 
 class PushButtonPic:
-    def __init__(self, x, y, on_image, off_image, text, font=None, font_size=20, callback=None):
+    def __init__(self, x, y, on_image, off_image, text, font=None, font_size=20, font_color=BLACK,callback=None):
         self.x = x
         self.y = y
         self.on_image = pygame.image.load(on_image)
@@ -105,13 +107,14 @@ class PushButtonPic:
         self.rect.topleft = (x, y)
         self.text = text
         self.font = pygame.font.SysFont(font, font_size) if font else pygame.font.Font(None, font_size)
+        self.font_color = font_color
         self.state = False
         self.callback = callback
 
     def draw(self, screen):
         screen.blit(self.image, self.rect)
         # Render and draw text on button
-        text_surface = self.font.render(self.text, True, (0, 0, 0))
+        text_surface = self.font.render(self.text, True, self.font_color)
         text_rect = text_surface.get_rect(center=(self.x + self.image.get_width() / 2, self.y +
                                                   (self.image.get_height() - self.font.get_height() / 2) / 2))
         screen.blit(text_surface, text_rect)
@@ -198,7 +201,8 @@ class PushButton:
 
 class TextField:
     def __init__(self, x, y, width, height, font=None, font_size=20, editable=False, rect_color=(200, 200, 200),
-                 background_color=(100,200,0),active_text_color=(0, 0, 0), passive_text_color=(64, 64, 64), callback=None):
+                 background_color=(100, 200, 0), active_text_color=(0, 0, 0), passive_text_color=(64, 64, 64),
+                 callback=None):
         self.x = x
         self.y = y
         self.width = width
@@ -346,6 +350,129 @@ class Label:
         screen.blit(self.rendered_text, (self.x, self.y))
 
 
+class Scope:
+    def __init__(self, x, y, width, height, bg_color=SCOPE_BG, dev_per_quad_x=5, dev_per_quad_y=4):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.bg_color = bg_color
+        self.dev_per_quad_x = dev_per_quad_x
+        self.dev_per_quad_y = dev_per_quad_y
+        self.time_scale = 0
+        self.delta_t = None
+        self.signals = []
+
+    def update(self, screen):
+        self.draw(screen)
+
+    def set_time_scale(self, time_scale):
+        self.time_scale = time_scale
+
+    def draw(self, screen):
+        # draw background
+        pygame.draw.rect(screen, self.bg_color, (self.x, self.y, self.width, self.height))
+
+        # draw signal(s)
+        self.draw_signals(screen)
+
+        # draw raster
+        self.draw_raster(screen)
+
+    def draw_raster(self, screen, raster_color=BLACK):
+        # draw center lines
+        pygame.draw.line(screen, raster_color, (self.width / 2 + self.x, self.y),
+                         (self.width / 2 + self.x, self.y + self.height), 2)
+        pygame.draw.line(screen, raster_color, (self.x, self.height / 2 + self.y),
+                         (self.x + self.width, self.height / 2 + self.y), 2)
+
+        y_start = (self.width / 2 + self.x - 3, self.width / 2 + self.x + 4,
+                   self.height / (5 * (2 * self.dev_per_quad_y)), self.height / (2 * self.dev_per_quad_y))
+        x_start = (self.height / 2 + self.y - 3, self.height / 2 + self.y + 4,
+                   self.width / (5 * (2 * self.dev_per_quad_x)), self.width / (2 * self.dev_per_quad_x))
+
+        for i in range(5 * (2 * self.dev_per_quad_y)):
+            pygame.draw.line(screen, raster_color, (y_start[0], self.y + y_start[2] * i),
+                             (y_start[1], self.y + y_start[2] * i), 1)
+
+        for i in range(5 * (2 * self.dev_per_quad_x)):
+            pygame.draw.line(screen, raster_color, (self.x + x_start[2] * i, x_start[0]),
+                             (self.x + x_start[2] * i, x_start[1]), 1)
+
+        for i in range(2 * self.dev_per_quad_y):
+            pygame.draw.line(screen, raster_color, (self.x, self.y + y_start[3] * i),
+                             (self.x + self.width, self.y + y_start[3] * i), 1)
+        for i in range(2 * self.dev_per_quad_x):
+            pygame.draw.line(screen, raster_color, (self.x + x_start[3] * i, self.y),
+                             (self.x + x_start[3] * i, self.y + self.height), 1)
+
+    def y_val_2_pixel(self, signal, y):
+        return round(-y / signal.val_per_division * self.height / (2 * self.dev_per_quad_y) - signal.offset *
+                     self.height / (2 * self.dev_per_quad_y) + self.y + self.height / 2)
+
+    def draw_signals(self, screen):
+        for idx, signal in enumerate(self.signals):
+            if self.time_scale > 0:
+                min_nr = 2 * 2 ** self.time_scale
+            else:
+                min_nr = 2
+            if len(signal.values) >= min_nr:
+                # Draw lines between data points
+                if self.time_scale == 0:
+                    nr_of_steps = min(self.width, len(signal.values))
+                    iterator_scale = 1
+                    zoom_scale = 1
+                elif self.time_scale > 0:
+                    nr_of_steps = min(self.width, len(signal.values)) // 2 ** self.time_scale
+                    iterator_scale = 2 ** self.time_scale
+                    zoom_scale = 1
+                else:  # self.time_scale < 0
+                    nr_of_steps = min(self.width // 2 ** -self.time_scale, len(signal.values))
+                    iterator_scale = 1
+                    zoom_scale = 2 ** -self.time_scale
+
+                for j in range(1, nr_of_steps):  #
+                    i = j * iterator_scale
+                    y0 = self.y_val_2_pixel(signal, float(signal.values[-i]))
+                    y1 = self.y_val_2_pixel(signal, float(signal.values[-(i + 1)]))
+                    start_point = (self.x + self.width - i * zoom_scale, int(y0))
+                    end_point = (self.x + self.width - i * zoom_scale - 1, int(y1))
+                    if not (start_point[1] < self.y or start_point[1] > (self.y + self.height) and
+                            end_point[1] < self.y or end_point[1] > (self.y + self.height)):
+                        if start_point[1] < self.y:
+                            start_point = (start_point[0], self.y)
+                        if start_point[1] > (self.y + self.height):
+                            start_point = (start_point[0], self.y + self.height)
+                        if end_point[1] < self.y:
+                            end_point = (end_point[0], self.y)
+                        if end_point[1] > (self.y + self.height):
+                            end_point = (end_point[0], self.y + self.height)
+
+                        pygame.draw.line(screen, signal.color, start_point, end_point, 4)
+
+    def add_signal(self, offset, val_per_division=100, color=GREEN):
+        new_signal = ScopeSignal(offset, val_per_division, color, max_length=self.width * 4)
+        self.signals.append(new_signal)
+
+    def add_data_to_signal(self, signal_index, value):
+        if signal_index < len(self.signals):
+            self.signals[signal_index].add_value(value)
+        else:
+            print("Invalid signal index")
+
+
+class ScopeSignal:
+    def __init__(self, offset, val_per_division, color, max_length=100):
+        self.offset = offset
+        self.val_per_division = val_per_division
+        self.color = color
+        self.values = deque(maxlen=max_length)  # Use deque with a fixed maximum length
+        self.active = True
+
+    def add_value(self, value):
+        self.values.append(value)
+
+
 class SerialPlotter:
     def __init__(self, x, y, width, height):
         self.x = x
@@ -361,4 +488,3 @@ class SerialPlotter:
     def update(self):
         # Implement serial plotter update logic here
         pass
-
